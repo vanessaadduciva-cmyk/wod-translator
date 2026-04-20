@@ -1,5 +1,4 @@
 streamlit
-pytesseract
 pillow
-openai
+requests
 gtts
