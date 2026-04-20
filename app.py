@@ -1,7 +1,7 @@
+
 import streamlit as st
 from PIL import Image
-from openai import OpenAI
-import base64
+import requests
 import io
 from gtts import gTTS
 import tempfile
@@ -9,8 +9,6 @@ import tempfile
 # -----------------------
 # CONFIG
 # -----------------------
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
 st.set_page_config(
     page_title="WOD Translator ELITE",
     page_icon="🔥",
@@ -31,7 +29,6 @@ body {
     padding: 20px;
     border-radius: 18px;
     margin-bottom: 20px;
-    box-shadow: 0px 4px 20px rgba(0,0,0,0.3);
 }
 .title {
     font-size: 34px;
@@ -80,7 +77,7 @@ with col2:
 
 modalita = st.selectbox(
     "Stile",
-    ["normale", "drammatico divertente", "coach cinematografico"]
+    ["normale", "drammatico divertente"]
 )
 
 voce = st.toggle("🎤 Attiva voce coach")
@@ -88,91 +85,78 @@ voce = st.toggle("🎤 Attiva voce coach")
 st.markdown('</div>', unsafe_allow_html=True)
 
 # -----------------------
-# OCR con AI (FUNZIONA SU CLOUD)
+# OCR SPACE
 # -----------------------
 def estrai_testo(img):
+    url = "https://api.ocr.space/parse/image"
+
     buffered = io.BytesIO()
     img.save(buffered, format="PNG")
-    img_base64 = base64.b64encode(buffered.getvalue()).decode()
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Leggi e trascrivi il testo presente in questa immagine di un WOD di crossfit. Mantieni struttura e numeri."},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-                    }
-                ]
-            }
-        ],
-        max_tokens=500
-    )
+    files = {
+        "file": ("image.png", buffered.getvalue())
+    }
 
-    return response.choices[0].message.content
+    payload = {
+        "apikey": "helloworld",
+        "language": "ita"
+    }
 
+    response = requests.post(url, data=payload, files=files)
+    result = response.json()
+
+    try:
+        return result["ParsedResults"][0]["ParsedText"]
+    except:
+        return "Errore nella lettura del testo"
 
 # -----------------------
-# PROMPT
+# GENERAZIONE TESTO (LOGICA SMART)
 # -----------------------
-def genera_prompt(testo, battute, spiegazione, modalita):
+def genera_output(testo, battute, spiegazione, modalita):
 
-    tono = ""
+    base = f"Questo è il WOD:\n{testo}\n\n"
 
+    # Spiegazione
+    if spiegazione == "ultra semplificate":
+        spieg = "Devi fare questi esercizi uno dopo l'altro, cercando di non fermarti. È molto faticoso."
+    elif spiegazione == "base":
+        spieg = "È un circuito di esercizi che combina cardio e forza. Più vai avanti, più diventa difficile mantenere il ritmo."
+    else:
+        spieg = "Questo WOD combina lavoro cardiovascolare e forza muscolare, con un accumulo progressivo di fatica su gambe e core."
+
+    # Aneddoto
+    aneddoto = "Una volta pensavo fosse facile… dopo 5 minuti stavo già rivalutando tutte le mie scelte di vita."
+
+    # Battute
+    if battute == "sportive":
+        jokes = "Questo WOD ti costruisce. O ti distrugge. Non c'è via di mezzo."
+    elif battute == "amichevoli":
+        jokes = "A metà allenamento inizierai a chiederti chi te l'ha fatto fare 😄"
+    elif battute == "flirt":
+        jokes = "Se resisti fino alla fine… potrei iniziare a trovarti interessante 😏"
+    else:
+        jokes = "Se reggi questo WOD… ho decisamente bisogno di conoscerti meglio 😌🔥"
+
+    # Stile
     if modalita == "drammatico divertente":
-        tono = "tono teatrale, ironico ed esagerato"
-    elif modalita == "coach cinematografico":
-        tono = "tono epico motivazionale stile film sportivo"
+        finale = "Questo non è allenamento. È un viaggio emotivo. Preparati."
+    else:
+        finale = "Dai il massimo e sopravvivi 💪"
 
     return f"""
-Analizza questo WOD:
+🔍 Spiegazione  
+{spieg}
 
-{testo}
+😄 Aneddoto  
+{aneddoto}
 
-PARAMETRI:
-- Spiegazione: {spiegazione}
-- Battute: {battute}
-- Stile: {modalita}
+🔥 Battute  
+{jokes}
 
-ISTRUZIONI:
-
-Spiegazione:
-- tecniche → dettagli su muscoli e strategia
-- base → semplice e chiara
-- ultra semplificate → facilissima
-
-Battute:
-- sportive → motivazionali
-- amichevoli → leggere
-- flirt → seduttive leggere
-- flirt spinto → più dirette ma non volgari
-
-Stile:
-- {tono}
-
-Struttura:
-
-🔍 Spiegazione
-😄 Aneddoto
-🔥 Battute
-🎤 Chiusura ad effetto
+🎤 Chiusura  
+{finale}
 """
-
-
-# -----------------------
-# GPT OUTPUT
-# -----------------------
-def genera_output(prompt):
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.9
-    )
-    return response.choices[0].message.content
-
 
 # -----------------------
 # VOCE
@@ -182,7 +166,6 @@ def genera_voce(testo):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     tts.save(tmp.name)
     return tmp.name
-
 
 # -----------------------
 # MAIN
@@ -196,7 +179,7 @@ if uploaded_file:
 
     if st.button("💥 Analizza WOD"):
 
-        with st.spinner("⏳ Analisi in corso... preparati mentalmente..."):
+        with st.spinner("⏳ Analisi in corso..."):
 
             testo = estrai_testo(image)
 
@@ -205,17 +188,14 @@ if uploaded_file:
             st.code(testo)
             st.markdown('</div>', unsafe_allow_html=True)
 
-            prompt = genera_prompt(
+            risultato = genera_output(
                 testo,
                 tipo_battute,
                 tipo_spiegazione,
                 modalita
             )
 
-            risultato = genera_output(prompt)
-
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown(f"### 🔥 Modalità: {modalita} | {tipo_battute} | {tipo_spiegazione}")
             st.write(risultato)
             st.markdown('</div>', unsafe_allow_html=True)
 
